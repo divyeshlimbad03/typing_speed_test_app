@@ -83,9 +83,9 @@ class _SplashScreenState extends State<SplashScreen>
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [
-              const Color(0xFF0EA5E9), // Primary color from homescreen
-              const Color(0xFF14B8A6), // Teal color from homescreen
-              const Color(0xFF0D9488), // Teal dark from homescreen
+              const Color(0xFF0EA5E9),
+              const Color(0xFF14B8A6),
+              const Color(0xFF0D9488),
             ],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
@@ -99,7 +99,6 @@ class _SplashScreenState extends State<SplashScreen>
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      // Animated logo with rotation and pulse
                       AnimatedBuilder(
                         animation: _animationController,
                         builder: (context, child) {
@@ -107,7 +106,7 @@ class _SplashScreenState extends State<SplashScreen>
                             angle: _rotateAnimation.value,
                             child: Transform.scale(
                               scale:
-                              _pulseAnimation.value * _scaleAnimation.value,
+                                  _pulseAnimation.value * _scaleAnimation.value,
                               child: child,
                             ),
                           );
@@ -147,15 +146,14 @@ class _SplashScreenState extends State<SplashScreen>
                       FadeTransition(
                         opacity: _fadeAnimation,
                         child: ShaderMask(
-                          shaderCallback: (bounds) =>
-                              LinearGradient(
-                                colors: [
-                                  Colors.white,
-                                  Colors.white.withOpacity(0.8),
-                                ],
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
-                              ).createShader(bounds),
+                          shaderCallback: (bounds) => LinearGradient(
+                            colors: [
+                              Colors.white,
+                              Colors.white.withOpacity(0.8),
+                            ],
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                          ).createShader(bounds),
                           child: const Text(
                             'Typing Master',
                             textAlign: TextAlign.center,
@@ -212,7 +210,6 @@ class _SplashScreenState extends State<SplashScreen>
                 ),
               ),
 
-              // Loading section with improved visuals
               Padding(
                 padding: const EdgeInsets.all(40),
                 child: Column(

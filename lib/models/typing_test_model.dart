@@ -1,16 +1,15 @@
-// Simple model to store typing test results
 class TypingTestModel {
   final int? id;
-  final String testType;        // character, word, number, sentence, moving_word
-  final String originalText;    // What user was supposed to type
-  final String typedText;       // What user actually typed
-  final double wpm;             // Words per minute
-  final double accuracy;        // Accuracy percentage
-  final int correctWords;       // Number of correct words
-  final int wrongWords;         // Number of wrong words
-  final int totalWords;         // Total words in test
-  final int timeSeconds;        // Time taken in seconds
-  final DateTime testDate;      // When test was taken
+  final String testType;
+  final String originalText;
+  final String typedText;
+  final double wpm;
+  final double accuracy;
+  final int correctWords;
+  final int wrongWords;
+  final int totalWords;
+  final int timeSeconds;
+  final DateTime testDate;
 
   TypingTestModel({
     this.id,
@@ -26,7 +25,6 @@ class TypingTestModel {
     required this.testDate,
   });
 
-  // Convert to Map for database storage
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -43,7 +41,6 @@ class TypingTestModel {
     };
   }
 
-  // Create from Map (database)
   factory TypingTestModel.fromMap(Map<String, dynamic> map) {
     return TypingTestModel(
       id: map['id']?.toInt(),
@@ -60,14 +57,12 @@ class TypingTestModel {
     );
   }
 
-  // Get formatted time string (mm:ss)
   String get formattedTime {
     int minutes = timeSeconds ~/ 60;
     int seconds = timeSeconds % 60;
     return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
   }
 
-  // Get date string (yyyy-mm-dd)
   String get dateString {
     return '${testDate.year}-${testDate.month.toString().padLeft(2, '0')}-${testDate.day.toString().padLeft(2, '0')}';
   }

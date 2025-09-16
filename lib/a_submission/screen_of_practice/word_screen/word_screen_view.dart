@@ -12,17 +12,12 @@ class _WordPracticeViewState extends State<WordPracticeView>
   final WordPracticeController c = Get.put(WordPracticeController());
   late AnimationController _animationController;
 
-  // --- App color system matching character screen ---
   final Color _bgColor = const Color(0xFFF6F8FA);
   final Color _textDark = const Color(0xFF1F2937);
   final Color _primary = const Color(0xFF0EA5E9);
   final Color _primaryDark = const Color(0xFF0284C7);
   final Color _teal = const Color(0xFF14B8A6);
   final Color _tealDark = const Color(0xFF0D9488);
-  final Color _amber = const Color(0xFFF59E0B);
-  final Color _amberDark = const Color(0xFFD97706);
-  final Color _indigo = const Color(0xFF6366F1);
-  final Color _indigoDark = const Color(0xFF4F46E5);
 
   @override
   void initState() {
@@ -122,39 +117,18 @@ class _WordPracticeViewState extends State<WordPracticeView>
               ],
             ),
           ),
-          Row(
-            children: [
-              _buildModeChip('Infinite', _teal),
-              const SizedBox(width: 8),
-              _buildModeChip('25 Words', _amber),
-              const SizedBox(width: 8),
-              _buildModeChip('50 Words', _indigo),
-            ],
-          ),
+          Row(children: [_buildModeChip('Infinite', _teal)]),
         ],
       ),
     );
   }
 
   Widget _buildModeChip(String label, Color color) {
-    bool selected = false;
-    if (label == 'Infinite') {
-      selected = c.isInfinite;
-    } else if (label == '25 Words') {
-      selected = !c.isInfinite && c.finiteCount == 25;
-    } else if (label == '50 Words') {
-      selected = !c.isInfinite && c.finiteCount == 50;
-    }
+    bool selected = c.isInfinite;
 
     return GestureDetector(
       onTap: () {
-        if (label == 'Infinite') {
-          c.restartInfinite();
-        } else if (label == '25 Words') {
-          c.restartFinite(25);
-        } else if (label == '50 Words') {
-          c.restartFinite(50);
-        }
+        c.restartInfinite();
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
@@ -229,9 +203,7 @@ class _WordPracticeViewState extends State<WordPracticeView>
                   Obx(() {
                     final revealed = c.originalWords.join(' ');
                     final revealedCount = c.originalWords.length;
-                    final totalText = c.isInfinite
-                        ? '∞'
-                        : c.finiteCount.toString();
+                    final totalText = '∞';
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -340,11 +312,11 @@ class _WordPracticeViewState extends State<WordPracticeView>
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  color: _indigo,
+                  color: Colors.indigo,
                 ),
               ),
             ),
-            _indigo,
+            Colors.indigo,
             Icons.speed,
           ),
         ],
@@ -356,7 +328,7 @@ class _WordPracticeViewState extends State<WordPracticeView>
     return Obx(() {
       final word = c.currentWord;
       final idx = c.currentIndex.value + 1;
-      final totalText = c.isInfinite ? '∞' : c.finiteCount.toString();
+      final totalText = '∞';
 
       return AnimatedBuilder(
         animation: _animationController,
@@ -575,17 +547,14 @@ class _WordPracticeViewState extends State<WordPracticeView>
   }
 }
 
-/// ---------------- HISTORY SCREEN ----------------
 class WordHistoryView extends StatelessWidget {
   final WordPracticeController controller;
 
-  // Define colors for consistency
   final Color _primary = const Color(0xFF0EA5E9);
   final Color _teal = const Color(0xFF14B8A6);
 
   const WordHistoryView({Key? key, required this.controller}) : super(key: key);
 
-  /// Create colored comparison text for words
   List<TextSpan> _getColoredWordsComparison(
     String originalWords,
     String typedWords,
@@ -598,7 +567,6 @@ class WordHistoryView extends StatelessWidget {
       final originalWord = originalList[i];
       final typedWord = i < typedList.length ? typedList[i] : '';
 
-      // Add space before word (except first word)
       if (i > 0) {
         spans.add(
           const TextSpan(
@@ -608,9 +576,7 @@ class WordHistoryView extends StatelessWidget {
         );
       }
 
-      // Compare words
       if (typedWord.isEmpty) {
-        // Word not typed yet - show in gray
         spans.add(
           TextSpan(
             text: originalWord,
@@ -618,7 +584,6 @@ class WordHistoryView extends StatelessWidget {
           ),
         );
       } else {
-        // Show typed word with color based on correctness
         final isCorrect = originalWord.toLowerCase() == typedWord.toLowerCase();
         spans.add(
           TextSpan(
@@ -736,7 +701,6 @@ class WordHistoryView extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 4),
-                // Show colored comparison if we have both original and typed text
                 if (original.isNotEmpty && typed.isNotEmpty)
                   RichText(
                     text: TextSpan(
@@ -792,7 +756,7 @@ class WordHistoryView extends StatelessWidget {
               );
               if (confirm == true) {
                 await controller.clearAllHistory();
-                Get.back(); // close history screen
+                Get.back();
               }
             },
           ),

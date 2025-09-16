@@ -1,41 +1,31 @@
 import 'package:typing_speed_test_app/import_export_file.dart';
 
 class WordPracticeController extends GetxController {
-  // UI controllers
   final TextEditingController inputController = TextEditingController();
   final FocusNode focusNode = FocusNode();
 
-  // Revealed list and typed history
   final RxList<String> originalWords = <String>[].obs;
   final RxList<String> typedWords = <String>[].obs;
 
-  // Index of current revealed word (0-based)
   final RxInt currentIndex = 0.obs;
 
-  // Stats
   final RxInt correct = 0.obs;
   final RxInt wrong = 0.obs;
   final RxInt totalAttempts = 0.obs;
   final RxInt sessionSeconds = 0.obs;
 
-  // Timer/stopwatch
   final Stopwatch stopwatch = Stopwatch();
   Timer? _tickTimer;
 
-  // Mode: infinite by default
   bool isInfinite = true;
-  int finiteCount = 0;
 
-  // expose practice active state (useful for UI)
   final RxBool isPracticeActive = false.obs;
 
-  // Persistence (history)
   final RxMap<String, List<Map<String, dynamic>>> history =
       <String, List<Map<String, dynamic>>>{}.obs;
   final DatabaseHelper _dbHelper = DatabaseHelper();
   static const String testType = 'word';
 
-  // Default starting reveal
   final int defaultInitialReveal = 1;
 
   @override
@@ -45,6 +35,7 @@ class WordPracticeController extends GetxController {
   }
 
   Future<void> _initController() async {
+    await _dbHelper.cleanupFiniteWordRecords();
     await loadHistoryFromDatabase();
     startInfiniteSession();
     _startTicker();
@@ -61,17 +52,13 @@ class WordPracticeController extends GetxController {
     });
   }
 
-  // Word generation state to prevent repetition
   final Set<String> _usedWords = <String>{};
   final Random _random = Random();
-  int _maxUniqueWords = 100; // Reset used words after this many words
+  int _maxUniqueWords = 100;
 
-  // Word length settings for random variety
   final int minWordLength = 2;
   final int maxWordLength = 9;
 
-  /// Generate a single random word with random length using english_words package
-  /// Ensures no word repetition within a session
   String _generateRandomWord() {
     String word;
     int attempts = 0;
@@ -82,13 +69,10 @@ class WordPracticeController extends GetxController {
       word = wp.first.toLowerCase();
       attempts++;
 
-      // Check if word meets length requirements
       if (word.length >= minWordLength && word.length <= maxWordLength) {
-        // Check if word hasn't been used recently
         if (!_usedWords.contains(word)) {
           _usedWords.add(word);
 
-          // Reset used words set if it gets too large
           if (_usedWords.length > _maxUniqueWords) {
             _usedWords.clear();
             _usedWords.add(word);
@@ -98,28 +82,22 @@ class WordPracticeController extends GetxController {
         }
       }
 
-      // Prevent infinite loops - if we can't find a unique word after many attempts,
-      // create a modified word or clear the used words set
       if (attempts > maxAttempts) {
         if (word.length < minWordLength) {
-          // If word is too short, try to extend it
           final wp2 = WordPair.random();
           final word2 = wp2.first.toLowerCase();
           if (word2.length >= minWordLength) {
             word = word2;
           } else {
-            // Create a word of minimum length by combining
             word = word + word2;
             if (word.length > maxWordLength) {
               word = word.substring(0, maxWordLength);
             }
           }
         } else if (word.length > maxWordLength) {
-          // If word is too long, truncate it
           word = word.substring(0, maxWordLength);
         }
 
-        // If still repeated, add a number suffix to make it unique
         String uniqueWord = word;
         int suffix = 1;
         while (_usedWords.contains(uniqueWord) && suffix < 10) {
@@ -127,7 +105,6 @@ class WordPracticeController extends GetxController {
           suffix++;
         }
 
-        // If we still can't find a unique word, clear the used set
         if (_usedWords.contains(uniqueWord)) {
           _usedWords.clear();
           uniqueWord = word;
@@ -139,38 +116,24 @@ class WordPracticeController extends GetxController {
     } while (true);
   }
 
-  /// Reveal next unique word by appending to originalWords
   void _revealNextWord() {
     originalWords.add(_generateRandomWord());
   }
 
-  /// Start / restart infinite session
   void startInfiniteSession() {
     isInfinite = true;
-    finiteCount = 0;
     _clearSessionState();
-    // reveal first
     _revealNextWord();
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => focusNode.requestFocus(),
     );
   }
 
-  /// Start finite session (revealed one-by-one)
-  void startFiniteSession(int count) {
-    isInfinite = false;
-    finiteCount = count;
-    _clearSessionState();
-    if (count > 0) _revealNextWord();
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => focusNode.requestFocus(),
-    );
-  }
 
   void _clearSessionState() {
     originalWords.clear();
     typedWords.clear();
-    _usedWords.clear(); // Clear used words for new session
+    _usedWords.clear();
     currentIndex.value = 0;
     correct.value = 0;
     wrong.value = 0;
@@ -181,7 +144,6 @@ class WordPracticeController extends GetxController {
     inputController.clear();
   }
 
-  /// Current active (to-type) word
   String get currentWord {
     if (currentIndex.value < originalWords.length) {
       return originalWords[currentIndex.value];
@@ -189,7 +151,6 @@ class WordPracticeController extends GetxController {
     return '';
   }
 
-  /// Input change handler — submit on trailing space OR when correct word is typed
   void onChanged(String value) {
     final trimmed = value.trim();
     if (trimmed.isNotEmpty && !stopwatch.isRunning) {
@@ -197,7 +158,6 @@ class WordPracticeController extends GetxController {
       isPracticeActive.value = true;
     }
 
-    // Auto-advance: submit immediately when correct word is typed
     if (trimmed.isNotEmpty &&
         trimmed.toLowerCase() == currentWord.toLowerCase()) {
       submitTyped(trimmed);
@@ -208,7 +168,6 @@ class WordPracticeController extends GetxController {
       return;
     }
 
-    // Also submit on trailing space (original behavior)
     if (value.endsWith(' ')) {
       if (trimmed.isNotEmpty) submitTyped(trimmed);
       inputController.clear();
@@ -218,7 +177,6 @@ class WordPracticeController extends GetxController {
     }
   }
 
-  /// Submit on Enter or explicit call
   void onSubmitted(String value) {
     final trimmed = value.trim();
     if (trimmed.isNotEmpty) {
@@ -234,7 +192,6 @@ class WordPracticeController extends GetxController {
     }
   }
 
-  /// Evaluate typed word, record stats, and reveal next word if allowed
   void submitTyped(String typed) {
     final expected = currentWord;
     if (expected.isEmpty) return;
@@ -250,24 +207,10 @@ class WordPracticeController extends GetxController {
 
     typedWords.add(typed);
 
-    // Advance and reveal next
-    if (isInfinite) {
-      currentIndex.value++;
-      _revealNextWord();
-    } else {
-      if (currentIndex.value < finiteCount - 1) {
-        currentIndex.value++;
-        _revealNextWord();
-      } else {
-        // reached end
-        currentIndex.value++;
-        stopwatch.stop();
-        isPracticeActive.value = false;
-      }
-    }
+    currentIndex.value++;
+    _revealNextWord();
   }
 
-  /// Reset progress but keep mode (reveal first word again)
   void resetSessionKeepMode() {
     typedWords.clear();
     correct.value = 0;
@@ -285,11 +228,7 @@ class WordPracticeController extends GetxController {
     );
   }
 
-  /// Restart infinite session
   void restartInfinite() => startInfiniteSession();
-
-  /// Restart finite session of count
-  void restartFinite(int count) => startFiniteSession(count);
 
   double get accuracy => (correct.value + wrong.value) == 0
       ? 0
@@ -335,7 +274,6 @@ class WordPracticeController extends GetxController {
     return spans;
   }
 
-  /// ---------------- HISTORY PERSISTENCE ----------------
 
   Map<String, dynamic> _createSessionMap() {
     return {
@@ -351,9 +289,7 @@ class WordPracticeController extends GetxController {
     };
   }
 
-  /// Save the current session under today's date key (YYYY-MM-DD)
   Future<void> saveCurrentSessionManual({bool resetAfterSave = true}) async {
-    // don't save empty sessions
     if (totalAttempts.value == 0) {
       Get.snackbar(
         'Nothing to save',
@@ -363,15 +299,12 @@ class WordPracticeController extends GetxController {
       return;
     }
 
-    // Stop timer and mark inactive
     isPracticeActive.value = false;
     if (stopwatch.isRunning) stopwatch.stop();
     sessionSeconds.value = stopwatch.elapsed.inSeconds;
 
-    // persist session
     await saveSessionToHistory();
 
-    // show confirmation
     Get.snackbar(
       'Saved',
       'Session saved for today',
@@ -379,7 +312,6 @@ class WordPracticeController extends GetxController {
     );
 
     if (resetAfterSave) {
-      // reset to fresh session keeping same mode
       resetSessionKeepMode();
     }
   }
@@ -388,7 +320,6 @@ class WordPracticeController extends GetxController {
     final dateKey = _todayKey();
     final session = _createSessionMap();
 
-    // Save to database
     final typingTest = TypingTestModel(
       testType: testType,
       originalText: originalWords.take(typedWords.length).join(' '),
@@ -404,7 +335,6 @@ class WordPracticeController extends GetxController {
 
     await _dbHelper.saveTypingTest(typingTest);
 
-    // Update local history for UI
     final existing = history[dateKey] ?? <Map<String, dynamic>>[];
     existing.insert(0, session);
     history[dateKey] = existing;
@@ -426,7 +356,7 @@ class WordPracticeController extends GetxController {
           'wpm': test.wpm,
           'cpm': test.wpm * 5,
           'duration_seconds': test.timeSeconds,
-          'session_type': isInfinite ? 'infinite' : 'finite',
+          'session_type': 'infinite',
           'originalWords': test.originalText.split(' '),
           'typedWords': test.typedText.split(' '),
         };

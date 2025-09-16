@@ -1,4 +1,3 @@
-import 'package:typing_speed_test_app/a_submission/other/feedback/feedback_view.dart';
 import 'package:typing_speed_test_app/import_export_file.dart';
 
 class Homescreen extends StatefulWidget {
@@ -12,7 +11,6 @@ class _HomescreenState extends State<Homescreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
 
-  // --- App color system ---
   final Color _bgColor = const Color(0xFFF6F8FA);
   final Color _textDark = const Color(0xFF1F2937);
   final Color _primary = const Color(0xFF0EA5E9);
@@ -167,13 +165,12 @@ class _HomescreenState extends State<Homescreen>
     );
   }
 
-  /// Drawer item builder — accepts a function that performs navigation or action.
   Widget _buildDrawerItem(
-      String title,
-      IconData icon,
-      Color iconColor,
-      VoidCallback onTap,
-      ) {
+    String title,
+    IconData icon,
+    Color iconColor,
+    VoidCallback onTap,
+  ) {
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
       leading: Container(
@@ -209,7 +206,6 @@ class _HomescreenState extends State<Homescreen>
         iconTheme: const IconThemeData(color: Colors.white),
       ),
 
-      // Drawer using DrawerHeader + ListView to avoid layout errors
       drawer: Drawer(
         elevation: 15,
         child: SafeArea(
@@ -285,7 +281,6 @@ class _HomescreenState extends State<Homescreen>
                 ),
               ),
 
-              // Scrolling drawer content
               Expanded(
                 child: ListView(
                   padding: const EdgeInsets.symmetric(vertical: 8),
@@ -294,7 +289,7 @@ class _HomescreenState extends State<Homescreen>
                       'Keyboard Setup',
                       Icons.keyboard_alt,
                       _tealDark,
-                          () {
+                      () {
                         Navigator.of(context).pop();
                         Get.to(() => KeyboardSetupScreen());
                       },
@@ -303,7 +298,7 @@ class _HomescreenState extends State<Homescreen>
                       'About / Help',
                       Icons.info_outline,
                       _primaryDark,
-                          () {
+                      () {
                         Navigator.of(context).pop();
                         Get.to(() => AboutUs());
                       },
@@ -322,7 +317,6 @@ class _HomescreenState extends State<Homescreen>
 
       body: Stack(
         children: [
-          // Header gradient
           Container(
             height: 250,
             decoration: BoxDecoration(
@@ -334,12 +328,10 @@ class _HomescreenState extends State<Homescreen>
             ),
           ),
 
-          // Main content
           SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Header with logo/title
                 Container(
                   padding: const EdgeInsets.only(
                     top: 100,
@@ -410,7 +402,6 @@ class _HomescreenState extends State<Homescreen>
                   ),
                 ),
 
-                // Practice modes
                 Container(
                   margin: const EdgeInsets.only(top: 20),
                   padding: const EdgeInsets.all(20),
@@ -481,7 +472,7 @@ class _HomescreenState extends State<Homescreen>
                           const Color(0xFF8B5CF6),
                           const Color(0xFFA78BFA),
                         ],
-                        // Purple theme
+
                         onTap: () => Get.to(() => MovingWordViewScreen()),
                       ),
                       const SizedBox(height: 20),
@@ -497,8 +488,6 @@ class _HomescreenState extends State<Homescreen>
   }
 }
 
-/// Small placeholder screen used for Share item fallback or other simple routes.
-/// Replace with your real implementation.
 class PlaceholderScreen extends StatelessWidget {
   final String title;
 

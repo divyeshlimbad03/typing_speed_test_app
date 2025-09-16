@@ -12,11 +12,10 @@ export 'package:shared_preferences/shared_preferences.dart';
 export 'package:sqflite/sqflite.dart';
 export 'package:path/path.dart';
 
-// Database and Models
 export 'package:typing_speed_test_app/database/database_helper.dart';
 export 'package:typing_speed_test_app/models/typing_test_model.dart';
+export 'package:typing_speed_test_app/a_submission/other/feedback/feedback_view.dart';
 
-// Widgets
 export 'package:typing_speed_test_app/a_submission/screen_of_practice/moving_word_screen/history_view.dart';
 
 export 'package:typing_speed_test_app/a_submission/other/about_us_screen.dart';
