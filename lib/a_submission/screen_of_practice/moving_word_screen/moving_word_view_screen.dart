@@ -1,18 +1,10 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:english_words/english_words.dart';
+import 'package:typing_speed_test_app/a_submission/screen_of_practice/moving_word_screen/moving_word_history_screen.dart';
 import '../../../database/database_helper.dart';
 import '../../../models/typing_test_model.dart';
-import 'moving_word_history_screen.dart';
 
-/// A typing practice screen where words move vertically from top to bottom.
-/// Features:
-/// - Speed selection (Slow, Medium, Fast, Very Fast)
-/// - Clean interface with only moving words visible
-/// - App bar with save and history icons
-/// - Infinite word generation using english_words package
-/// - Automatic word progression and timing
-/// - Statistics tracking (correct, missed, WPM)
 class MovingWordViewScreen extends StatefulWidget {
   const MovingWordViewScreen({super.key});
 
@@ -31,20 +23,21 @@ class _MovingWordViewScreenState extends State<MovingWordViewScreen>
     'Very Fast': 1,
   };
 
-  // Infinite word generation system (similar to WordPracticeController)
+  // Word generation
   final Set<String> _usedWords = <String>{};
-  final int _maxUniqueWords = 100; // Reset used words after this many words
+  final int _maxUniqueWords = 100;
   final int _minWordLength = 2;
   final int _maxWordLength = 9;
 
   // Database integration
   final DatabaseHelper _dbHelper = DatabaseHelper();
   static const String _testType = 'moving_word_vertical';
-  final List<String> _wordsAttempted = []; // Track words for session
+  final List<String> _wordsAttempted = [];
 
   // Game state
   bool isTestStarted = false;
   bool showSpeedSelector = true;
+  bool isStopped = false;
   String currentWord = '';
   String typedText = '';
   Timer? wordTimer;
@@ -56,8 +49,6 @@ class _MovingWordViewScreenState extends State<MovingWordViewScreen>
   final FocusNode _focusNode = FocusNode();
 
   // Statistics
-  int correctWords = 0;
-  int missedWords = 0;
   int totalWordsTyped = 0;
   DateTime? testStartTime;
   Duration testDuration = Duration.zero;
@@ -69,8 +60,6 @@ class _MovingWordViewScreenState extends State<MovingWordViewScreen>
       duration: Duration(milliseconds: 2000),
       vsync: this,
     );
-    // Updated animation: word stays visible in center for most of the time
-    // Falls slowly from top (0.0) to center (0.3) and stays there until end (1.0)
     _animation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
@@ -85,8 +74,6 @@ class _MovingWordViewScreenState extends State<MovingWordViewScreen>
     super.dispose();
   }
 
-  /// Generate a single random word with random length using english_words package
-  /// Ensures no word repetition within a session (similar to WordPracticeController)
   String _generateRandomWord() {
     String word;
     int attempts = 0;
@@ -97,13 +84,10 @@ class _MovingWordViewScreenState extends State<MovingWordViewScreen>
       word = wp.first.toLowerCase();
       attempts++;
 
-      // Check if word meets length requirements
       if (word.length >= _minWordLength && word.length <= _maxWordLength) {
-        // Check if word hasn't been used recently
         if (!_usedWords.contains(word)) {
           _usedWords.add(word);
 
-          // Reset used words set if it gets too large
           if (_usedWords.length > _maxUniqueWords) {
             _usedWords.clear();
             _usedWords.add(word);
@@ -113,28 +97,22 @@ class _MovingWordViewScreenState extends State<MovingWordViewScreen>
         }
       }
 
-      // Prevent infinite loops - if we can't find a unique word after many attempts,
-      // create a modified word or clear the used words set
       if (attempts > maxAttempts) {
         if (word.length < _minWordLength) {
-          // If word is too short, try to extend it
           final wp2 = WordPair.random();
           final word2 = wp2.first.toLowerCase();
           if (word2.length >= _minWordLength) {
             word = word2;
           } else {
-            // Create a word of minimum length by combining
             word = word + word2;
             if (word.length > _maxWordLength) {
               word = word.substring(0, _maxWordLength);
             }
           }
         } else if (word.length > _maxWordLength) {
-          // If word is too long, truncate it
           word = word.substring(0, _maxWordLength);
         }
 
-        // If still repeated, add a number suffix to make it unique
         String uniqueWord = word;
         int suffix = 1;
         while (_usedWords.contains(uniqueWord) && suffix < 10) {
@@ -142,7 +120,6 @@ class _MovingWordViewScreenState extends State<MovingWordViewScreen>
           suffix++;
         }
 
-        // If we still can't find a unique word, clear the used set
         if (_usedWords.contains(uniqueWord)) {
           _usedWords.clear();
           uniqueWord = word;
@@ -160,14 +137,11 @@ class _MovingWordViewScreenState extends State<MovingWordViewScreen>
         isPaused = true;
       });
 
-      // Pause animation
       _animationController.stop();
 
-      // Cancel current timer and calculate remaining time
       if (wordTimer != null && wordTimer!.isActive) {
         wordTimer!.cancel();
 
-        // Calculate remaining time based on animation progress
         double remainingProgress = 1.0 - _animationController.value;
         int totalDuration = speedSettings[selectedSpeed]!;
         remainingTime = Duration(
@@ -178,15 +152,13 @@ class _MovingWordViewScreenState extends State<MovingWordViewScreen>
   }
 
   void _resumeGame() {
-    if (isPaused && isTestStarted) {
+    if (isPaused && isTestStarted && !isStopped) {
       setState(() {
         isPaused = false;
       });
 
-      // Resume animation
       _animationController.forward();
 
-      // Start new timer with remaining time
       if (remainingTime.inSeconds > 0) {
         wordTimer = Timer(remainingTime, () {
           _onWordTimeout();
@@ -195,55 +167,67 @@ class _MovingWordViewScreenState extends State<MovingWordViewScreen>
     }
   }
 
+  void _stopGame() {
+    setState(() {
+      isStopped = true;
+      isPaused = false;
+      isTestStarted = false;
+      showSpeedSelector = true;
+    });
+
+    wordTimer?.cancel();
+    _animationController.stop();
+    _animationController.reset();
+
+    _textController.clear();
+
+    currentWord = '';
+    typedText = '';
+    remainingTime = Duration.zero;
+  }
+
   void startTest() {
     setState(() {
       showSpeedSelector = false;
       isTestStarted = true;
+      isStopped = false;
+      isPaused = false;
       testStartTime = DateTime.now();
-      correctWords = 0;
-      missedWords = 0;
       totalWordsTyped = 0;
-      _usedWords.clear(); // Clear used words for new session
-      _wordsAttempted.clear(); // Clear session word history
+      _usedWords.clear();
+      _wordsAttempted.clear();
     });
     _showNextWord();
   }
 
   void _showNextWord() {
-    // Generate a new random word for infinite practice
     final newWord = _generateRandomWord();
-    _wordsAttempted.add(newWord); // Track word for session
+    _wordsAttempted.add(newWord);
 
     setState(() {
       currentWord = newWord;
       typedText = '';
     });
 
-    // Clear the text input field
     _textController.clear();
 
-    // Set animation duration to match the selected speed
     int duration = speedSettings[selectedSpeed]!;
     _animationController.duration = Duration(seconds: duration);
 
     _animationController.reset();
     _animationController.forward();
 
-    // Set timer based on selected speed (same as animation duration)
     wordTimer = Timer(Duration(seconds: duration), () {
       _onWordTimeout();
     });
   }
 
   void _onWordTimeout() {
-    // Word missed (not typed in time)
     setState(() {
-      missedWords++;
       totalWordsTyped++;
     });
     _showNextWord();
 
-    // Refocus the text input
     Future.delayed(const Duration(milliseconds: 100), () {
       if (_focusNode.canRequestFocus) {
         _focusNode.requestFocus();
@@ -254,23 +238,12 @@ class _MovingWordViewScreenState extends State<MovingWordViewScreen>
   void _onWordTyped(String word) {
     wordTimer?.cancel();
 
-    if (word.toLowerCase() == currentWord.toLowerCase()) {
-      setState(() {
-        correctWords++;
-      });
-    } else {
-      setState(() {
-        missedWords++;
-      });
-    }
-
     setState(() {
       totalWordsTyped++;
     });
 
     _showNextWord();
 
-    // Refocus the text input
     Future.delayed(const Duration(milliseconds: 100), () {
       if (_focusNode.canRequestFocus) {
         _focusNode.requestFocus();
@@ -285,7 +258,7 @@ class _MovingWordViewScreenState extends State<MovingWordViewScreen>
     double minutes = elapsed.inMilliseconds / 60000.0;
 
     if (minutes > 0) {
-      return correctWords / minutes;
+      return totalWordsTyped / minutes;
     }
     return 0.0;
   }
@@ -293,7 +266,6 @@ class _MovingWordViewScreenState extends State<MovingWordViewScreen>
   Future<void> _saveSession() async {
     _pauseGame();
 
-    // Don't save empty sessions
     if (totalWordsTyped == 0) {
       _showMessage(
         'Nothing to save',
@@ -305,110 +277,104 @@ class _MovingWordViewScreenState extends State<MovingWordViewScreen>
     }
 
     try {
-      // Calculate session data
       double wpm = _calculateWPM();
       Duration elapsed = testStartTime != null
           ? DateTime.now().difference(testStartTime!)
           : Duration.zero;
-      double accuracy = totalWordsTyped > 0
-          ? (correctWords / totalWordsTyped) * 100
-          : 0.0;
+      double accuracy = 100.0; // Default accuracy for simplicity
 
-      // Create typing test model
+      // Save to database
       final typingTest = TypingTestModel(
         testType: _testType,
         originalText: _wordsAttempted.join(' '),
-        // Original words attempted
-        typedText: _wordsAttempted.take(correctWords + missedWords).join(' '),
-        // Session representation
+        typedText: _wordsAttempted.join(' '),
         wpm: wpm,
         accuracy: accuracy,
-        correctWords: correctWords,
-        wrongWords: missedWords,
+        correctWords: totalWordsTyped,
+        wrongWords: 0,
         totalWords: totalWordsTyped,
         timeSeconds: elapsed.inSeconds,
         testDate: DateTime.now(),
       );
 
-      // Save to database
       await _dbHelper.saveTypingTest(typingTest);
 
-      // Show success dialog
-      _showSaveSuccessDialog(wpm, accuracy, elapsed);
+      _showSaveSuccessDialog(wpm, elapsed);
     } catch (e) {
       _showMessage('Save Failed', 'Error saving session: $e', isError: true);
       _resumeGame();
     }
   }
 
-  void _showSaveSuccessDialog(double wpm, double accuracy, Duration elapsed) {
+  void _showSaveSuccessDialog(double wpm, Duration elapsed) {
+    final Color primaryColor = _getSpeedColor(selectedSpeed);
+    final Color secondaryColor = _getSecondaryColor(selectedSpeed);
+
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: Row(
-            children: [
-              Icon(Icons.check_circle, color: Colors.green, size: 28),
-              SizedBox(width: 8),
-              Text('Session Saved!'),
-            ],
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(colors: [primaryColor, secondaryColor]),
+              borderRadius: BorderRadius.circular(15),
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.check_circle, color: Colors.white, size: 28),
+                SizedBox(width: 8),
+                Text(
+                  'Saved!',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildSaveStatRow(
-                'Duration',
-                '${elapsed.inMinutes}:${(elapsed.inSeconds % 60).toString().padLeft(2, '0')}',
+              Text(
+                'WPM: ${wpm.toStringAsFixed(1)}',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: primaryColor,
+                ),
               ),
-              _buildSaveStatRow('Total Words', '$totalWordsTyped'),
-              _buildSaveStatRow('Correct Words', '$correctWords'),
-              _buildSaveStatRow('Missed Words', '$missedWords'),
-              _buildSaveStatRow('Accuracy', '${accuracy.toStringAsFixed(1)}%'),
-              _buildSaveStatRow('WPM', wpm.toStringAsFixed(1)),
-              SizedBox(height: 16),
-              Container(
-                width: double.infinity,
-                padding: EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  'Your progress has been saved to history!',
-                  style: TextStyle(
-                    color: Colors.green.shade700,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
+              const SizedBox(height: 8),
+              Text(
+                'Time: ${elapsed.inMinutes}:${(elapsed.inSeconds % 60).toString().padLeft(2, '0')}',
+                style: const TextStyle(fontSize: 16),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Words: $totalWordsTyped',
+                style: const TextStyle(fontSize: 16),
               ),
             ],
           ),
           actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                _resumeGame();
-              },
-              child: const Text('Continue'),
-            ),
             ElevatedButton(
               onPressed: () {
                 Navigator.of(context).pop();
                 _resumeGame();
-                // Navigate to history screen
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => const MovingWordHistoryScreen(),
-                  ),
-                );
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
+                backgroundColor: primaryColor,
                 foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(15),
+                ),
               ),
-              child: const Text('View History'),
+              child: const Text('Continue'),
             ),
           ],
         );
@@ -418,30 +384,14 @@ class _MovingWordViewScreenState extends State<MovingWordViewScreen>
     });
   }
 
-  Widget _buildSaveStatRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            label,
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
-          ),
-          Text(
-            value,
-            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _showMessage(String title, String message, {bool isError = false}) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           title: Row(
             children: [
               Icon(
@@ -466,10 +416,8 @@ class _MovingWordViewScreenState extends State<MovingWordViewScreen>
   }
 
   void _showHistory() {
-    // Pause the game when navigating to history
     _pauseGame();
 
-    // Navigate to history screen
     Navigator.of(context)
         .push(
           MaterialPageRoute(
@@ -477,282 +425,800 @@ class _MovingWordViewScreenState extends State<MovingWordViewScreen>
           ),
         )
         .then((_) {
-          // Resume the game when returning from history
           _resumeGame();
         });
   }
 
   Widget _buildSpeedSelector() {
+    final Color primaryColor = const Color(0xFF6366F1);
+    final Color bgColor = const Color(0xFFF8FAFC);
+
     return Container(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Text(
-            'Select Speed Setting',
-            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 30),
-          ...speedSettings.entries.map((entry) {
-            return Container(
-              margin: const EdgeInsets.symmetric(vertical: 8),
-              child: SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () {
-                    setState(() {
-                      selectedSpeed = entry.key;
-                    });
-                    startTest();
-                  },
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 15),
-                    backgroundColor: selectedSpeed == entry.key
-                        ? Colors.blue
-                        : Colors.grey[300],
-                  ),
-                  child: Text(
-                    '${entry.key} (${entry.value} seconds per word)',
-                    style: TextStyle(
-                      fontSize: 18,
-                      color: selectedSpeed == entry.key
-                          ? Colors.white
-                          : Colors.black,
-                    ),
-                  ),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [bgColor, Colors.white],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+      ),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: primaryColor.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.flash_on, size: 48, color: primaryColor),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'Choose Your Speed',
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                  color: const Color(0xFF1E293B),
                 ),
               ),
-            );
-          }).toList(),
+              const SizedBox(height: 8),
+              Text(
+                'Select how fast words should move',
+                style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
+              ),
+              const SizedBox(height: 32),
+              ...speedSettings.entries.map((entry) {
+                final bool isSelected = selectedSpeed == entry.key;
+                final Color speedColor = _getSpeedColor(entry.key);
+
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () {
+                        setState(() {
+                          selectedSpeed = entry.key;
+                        });
+                        startTest();
+                      },
+                      borderRadius: BorderRadius.circular(16),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          gradient: isSelected
+                              ? LinearGradient(
+                                  colors: [
+                                    speedColor,
+                                    speedColor.withOpacity(0.8),
+                                  ],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                )
+                              : null,
+                          color: isSelected ? null : Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: isSelected
+                                ? speedColor
+                                : Colors.grey.shade300,
+                            width: isSelected ? 2 : 1,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: isSelected
+                                  ? speedColor.withOpacity(0.3)
+                                  : Colors.black.withOpacity(0.05),
+                              blurRadius: isSelected ? 12 : 4,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: (isSelected ? Colors.white : speedColor)
+                                    .withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Icon(
+                                _getSpeedIcon(entry.key),
+                                color: isSelected ? Colors.white : speedColor,
+                                size: 20,
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    entry.key,
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: isSelected
+                                          ? Colors.white
+                                          : const Color(0xFF1E293B),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '${entry.value} seconds per word',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: isSelected
+                                          ? Colors.white.withOpacity(0.9)
+                                          : Colors.grey.shade600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Icon(
+                              Icons.arrow_forward_ios,
+                              color: isSelected ? Colors.white : speedColor,
+                              size: 16,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Color _getSpeedColor(String speed) {
+    switch (speed) {
+      case 'Slow':
+        return const Color(0xFF10B981);
+      case 'Medium':
+        return const Color(0xFF3B82F6);
+      case 'Fast':
+        return const Color(0xFFF59E0B);
+      case 'Very Fast':
+        return const Color(0xFFEF4444);
+      default:
+        return const Color(0xFF6366F1);
+    }
+  }
+
+  Color _getSecondaryColor(String speed) {
+    switch (speed) {
+      case 'Slow':
+        return const Color(0xFF34D399);
+      case 'Medium':
+        return const Color(0xFF60A5FA);
+      case 'Fast':
+        return const Color(0xFFFBBF24);
+      case 'Very Fast':
+        return const Color(0xFFF87171);
+      default:
+        return const Color(0xFF818CF8);
+    }
+  }
+
+  IconData _getSpeedIcon(String speed) {
+    switch (speed) {
+      case 'Slow':
+        return Icons.directions_walk;
+      case 'Medium':
+        return Icons.directions_run;
+      case 'Fast':
+        return Icons.directions_bike;
+      case 'Very Fast':
+        return Icons.rocket_launch;
+      default:
+        return Icons.speed;
+    }
+  }
+
+  Widget _buildMovingWordView() {
+    final Color primaryColor = _getSpeedColor(selectedSpeed);
+    final Color secondaryColor = _getSecondaryColor(selectedSpeed);
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            primaryColor.withOpacity(0.1),
+            secondaryColor.withOpacity(0.2),
+            Colors.white,
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Column(
+        children: [
+          // Control buttons only
+          Container(
+            margin: const EdgeInsets.all(16),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  primaryColor.withOpacity(0.8),
+                  secondaryColor.withOpacity(0.9),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(25),
+              boxShadow: [
+                BoxShadow(
+                  color: primaryColor.withOpacity(0.3),
+                  blurRadius: 15,
+                  offset: const Offset(0, 5),
+                ),
+              ],
+            ),
+            child: _buildControlButtons(),
+          ),
+          // Main word display area
+          Expanded(
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: primaryColor.withOpacity(0.1),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: AnimatedBuilder(
+                animation: _animation,
+                builder: (context, child) {
+                  double screenHeight = MediaQuery.of(context).size.height;
+                  double maxFallDistance = screenHeight * 0.4;
+
+                  double topPosition;
+                  if (_animation.value < 0.15) {
+                    topPosition = -50 + (_animation.value / 0.15) * 100;
+                  } else if (_animation.value < 0.85) {
+                    topPosition = 50 + (_animation.value - 0.15) * 100;
+                  } else {
+                    double finalFallProgress = (_animation.value - 0.85) / 0.15;
+                    topPosition = 120 + finalFallProgress * maxFallDistance;
+                  }
+
+                  return Stack(
+                    children: [
+                      // Word display - simple and big
+                      Positioned(
+                        top: topPosition,
+                        left: 0,
+                        right: 0,
+                        child: Center(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 40,
+                              vertical: 25,
+                            ),
+                            margin: const EdgeInsets.symmetric(horizontal: 20),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  primaryColor,
+                                  secondaryColor,
+                                  primaryColor.withOpacity(0.9),
+                                ],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(30),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: primaryColor.withOpacity(0.4),
+                                  blurRadius: 25,
+                                  offset: const Offset(0, 10),
+                                ),
+                                BoxShadow(
+                                  color: secondaryColor.withOpacity(0.2),
+                                  blurRadius: 15,
+                                  offset: const Offset(5, 5),
+                                ),
+                              ],
+                            ),
+                            child: Text(
+                              currentWord,
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                                letterSpacing: 2.0,
+                                shadows: [
+                                  Shadow(
+                                    offset: Offset(2, 2),
+                                    blurRadius: 4,
+                                    color: Colors.black26,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      // Seconds countdown below the word
+                      Positioned(
+                        top: topPosition + 85,
+                        left: 0,
+                        right: 0,
+                        child: Center(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  secondaryColor.withOpacity(0.8),
+                                  primaryColor.withOpacity(0.8),
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(20),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: primaryColor.withOpacity(0.3),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ],
+                            ),
+                            child: Text(
+                              isPaused
+                                  ? 'PAUSED'
+                                  : '${((1 - _animation.value) * speedSettings[selectedSpeed]!).ceil()}s',
+                              style: const TextStyle(
+                                fontSize: 15,
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 1.0,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      // Simple pause overlay
+                      if (isPaused)
+                        Positioned.fill(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  Colors.black.withOpacity(0.8),
+                                  primaryColor.withOpacity(0.3),
+                                ],
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                              ),
+                              borderRadius: BorderRadius.circular(24),
+                            ),
+                            child: Center(
+                              child: Container(
+                                padding: const EdgeInsets.all(30),
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: [primaryColor, secondaryColor],
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                  ),
+                                  borderRadius: BorderRadius.circular(20),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: primaryColor.withOpacity(0.5),
+                                      blurRadius: 20,
+                                      offset: const Offset(0, 5),
+                                    ),
+                                  ],
+                                ),
+                                child: const Text(
+                                  'PAUSED',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 3.0,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ),
+          // Colorful input field
+          Container(
+            margin: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  primaryColor.withOpacity(0.1),
+                  secondaryColor.withOpacity(0.1),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: primaryColor.withOpacity(0.2),
+                  blurRadius: 15,
+                  offset: const Offset(0, 5),
+                ),
+              ],
+            ),
+            child: TextField(
+              controller: _textController,
+              focusNode: _focusNode,
+              autofocus: true,
+              enabled: !isPaused,
+              onChanged: (value) {
+                if (!isPaused) {
+                  setState(() {
+                    typedText = value;
+                  });
+                  if (value.trim().toLowerCase() == currentWord.toLowerCase()) {
+                    _onWordTyped(value.trim());
+                  }
+                }
+              },
+              onSubmitted: (value) {
+                if (!isPaused) {
+                  _onWordTyped(value.trim());
+                }
+              },
+              decoration: InputDecoration(
+                hintText: isPaused ? 'Game paused...' : 'Type the word here',
+                hintStyle: TextStyle(
+                  color: primaryColor.withOpacity(0.6),
+                  fontSize: 16,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(25),
+                  borderSide: BorderSide.none,
+                ),
+                filled: true,
+                fillColor: Colors.white,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 25,
+                  vertical: 20,
+                ),
+                prefixIcon: Container(
+                  margin: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        primaryColor.withOpacity(0.8),
+                        secondaryColor.withOpacity(0.8),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  child: const Icon(Icons.keyboard, color: Colors.white),
+                ),
+              ),
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+                color: primaryColor,
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildMovingWordView() {
-    return Column(
+  Widget _buildControlButtons() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        // Main word display area
-        Expanded(
-          child: SizedBox(
-            width: double.infinity,
-            child: AnimatedBuilder(
-              animation: _animation,
-              builder: (context, child) {
-                // Calculate position for top-to-bottom falling animation
-                double screenHeight = MediaQuery.of(context).size.height;
-                double maxFallDistance =
-                    screenHeight * 0.4; // Word can fall 40% of screen height
-
-                // TOP-TO-BOTTOM animation with clear visibility:
-                // Word starts above screen and falls down, staying visible for most duration
-                double topPosition;
-
-                if (_animation.value < 0.15) {
-                  // First 15%: Word drops from above screen to top of visible area
-                  topPosition =
-                      -50 +
-                      (_animation.value / 0.15) *
-                          100; // From -50 to 50 pixels from top
-                } else if (_animation.value < 0.85) {
-                  // Middle 70%: Word stays clearly visible in upper-middle area
-                  topPosition =
-                      50 +
-                      (_animation.value - 0.15) *
-                          100; // Slowly drifts down in visible area
-                } else {
-                  // Last 15%: Word falls toward bottom and disappears
-                  double finalFallProgress = (_animation.value - 0.85) / 0.15;
-                  topPosition =
-                      120 +
-                      finalFallProgress *
-                          maxFallDistance; // Falls toward bottom
-                }
-
-                return Stack(
+        // Pause/Resume Button
+        Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: isPaused
+                  ? [Colors.green, Colors.lightGreen]
+                  : [Colors.orange, Colors.amber],
+            ),
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: (isPaused ? Colors.green : Colors.orange).withOpacity(
+                  0.4,
+                ),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: isPaused ? _resumeGame : _pauseGame,
+              borderRadius: BorderRadius.circular(20),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Progress indicator at top
-                    Positioned(
-                      top: 20,
-                      left: 20,
-                      right: 20,
-                      child: LinearProgressIndicator(
-                        value: _animation.value,
-                        backgroundColor: Colors.grey.withOpacity(0.3),
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          _animation.value > 0.7 ? Colors.red : Colors.blue,
-                        ),
-                        minHeight: 4,
+                    Icon(
+                      isPaused ? Icons.play_arrow : Icons.pause,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      isPaused ? 'Resume' : 'Pause',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
                       ),
                     ),
-                    // Word display
-                    Positioned(
-                      top: topPosition,
-                      left: 0,
-                      right: 0,
-                      child: Center(
-                        child: Container(
-                          padding: const EdgeInsets.all(20),
-                          decoration: BoxDecoration(
-                            color: Colors.blue.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: Colors.blue, width: 2),
-                          ),
-                          child: Text(
-                            currentWord,
-                            style: const TextStyle(
-                              fontSize: 36,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.blue,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    // Time remaining indicator
-                    Positioned(
-                      top: topPosition + 100,
-                      left: 0,
-                      right: 0,
-                      child: Center(
-                        child: Text(
-                          isPaused
-                              ? 'PAUSED'
-                              : '${((1 - _animation.value) * speedSettings[selectedSpeed]!).ceil()} sec',
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: isPaused
-                                ? Colors.orange
-                                : (_animation.value > 0.7
-                                      ? Colors.red
-                                      : Colors.grey.shade600),
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ),
-                    // Pause overlay
-                    if (isPaused)
-                      Positioned.fill(
-                        child: Container(
-                          color: Colors.black.withOpacity(0.3),
-                          child: Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.pause_circle_filled,
-                                  color: Colors.white,
-                                  size: 64,
-                                ),
-                                const SizedBox(height: 16),
-                                Text(
-                                  'GAME PAUSED',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 24,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  'Close dialog to resume',
-                                  style: TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
                   ],
-                );
-              },
+                ),
+              ),
             ),
           ),
         ),
-        // Text input field
+        const SizedBox(width: 15),
+        // Stop Button
         Container(
-          padding: const EdgeInsets.all(20),
-          child: TextField(
-            controller: _textController,
-            focusNode: _focusNode,
-            autofocus: true,
-            enabled: !isPaused,
-            // Disable input when paused
-            onChanged: (value) {
-              if (!isPaused) {
-                setState(() {
-                  typedText = value;
-                });
-
-                // Auto-submit when word is complete and matches
-                if (value.trim().toLowerCase() == currentWord.toLowerCase()) {
-                  _onWordTyped(value.trim());
-                }
-              }
-            },
-            onSubmitted: (value) {
-              if (!isPaused) {
-                _onWordTyped(value.trim());
-              }
-            },
-            decoration: InputDecoration(
-              hintText: isPaused
-                  ? 'Game paused...'
-                  : 'Type the word: $currentWord',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(colors: [Colors.red, Colors.pink]),
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.red.withOpacity(0.4),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
               ),
-              filled: true,
-              fillColor: Colors.white,
-              prefixIcon: const Icon(Icons.keyboard, color: Colors.blue),
-              suffixIcon: typedText.isNotEmpty
-                  ? IconButton(
-                      icon: const Icon(Icons.clear),
-                      onPressed: () {
-                        _textController.clear();
-                        setState(() {
-                          typedText = '';
-                        });
-                      },
-                    )
-                  : null,
+            ],
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => _showStopConfirmation(),
+              borderRadius: BorderRadius.circular(20),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12,
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.stop, color: Colors.white, size: 20),
+                    SizedBox(width: 8),
+                    Text(
+                      'Stop',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-            style: const TextStyle(fontSize: 20),
           ),
         ),
       ],
     );
   }
 
+  void _showStopConfirmation() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              Icon(Icons.warning, color: const Color(0xFFEF4444), size: 28),
+              const SizedBox(width: 8),
+              const Text('Stop Game?'),
+            ],
+          ),
+          content: const Text(
+            'Are you sure you want to stop the current game? Your progress will be lost unless you save it first.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                await _saveSession();
+                _stopGame();
+              },
+              child: const Text('Save & Stop'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _stopGame();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFEF4444),
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Stop Without Saving'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final Color primaryColor = showSpeedSelector
+        ? const Color(0xFF6366F1)
+        : _getSpeedColor(selectedSpeed);
+
     return Scaffold(
+      backgroundColor: showSpeedSelector ? null : const Color(0xFFF8FAFC),
       appBar: isTestStarted
           ? AppBar(
-              title: Text('Moving Words'),
-              backgroundColor: Colors.blue,
+              title: Row(
+                children: [
+                  const SizedBox(width: 12),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'Moving Words',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        '$selectedSpeed Mode',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.white.withOpacity(0.9),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              backgroundColor: primaryColor,
               foregroundColor: Colors.white,
-              actions: [
-                IconButton(
-                  onPressed: _saveSession,
-                  icon: const Icon(Icons.save),
-                  tooltip: 'Save Session',
+              elevation: 0,
+              flexibleSpace: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [primaryColor, primaryColor.withOpacity(0.8)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: const BorderRadius.vertical(
+                    bottom: Radius.circular(16),
+                  ),
                 ),
-                IconButton(
-                  onPressed: _showHistory,
-                  icon: const Icon(Icons.history),
-                  tooltip: 'View History',
+              ),
+              shape: const RoundedRectangleBorder(
+                borderRadius: BorderRadius.vertical(
+                  bottom: Radius.circular(16),
+                ),
+              ),
+              actions: [
+                Container(
+                  margin: const EdgeInsets.only(right: 8),
+                  child: IconButton(
+                    onPressed: _saveSession,
+                    icon: const Icon(Icons.save_alt),
+                    tooltip: 'Save Session',
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.white.withOpacity(0.2),
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ),
+                Container(
+                  margin: const EdgeInsets.only(right: 16),
+                  child: IconButton(
+                    onPressed: _showHistory,
+                    icon: const Icon(Icons.history),
+                    tooltip: 'View History',
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.white.withOpacity(0.2),
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
                 ),
               ],
             )
           : AppBar(
-              title: const Text('Moving Words Test'),
-              backgroundColor: Colors.blue,
+              title: Row(
+                children: [
+                  const Text(
+                    'Moving Words',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              backgroundColor: primaryColor,
               foregroundColor: Colors.white,
+              elevation: 0,
+              flexibleSpace: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [primaryColor, primaryColor.withOpacity(0.8)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: const BorderRadius.vertical(
+                    bottom: Radius.circular(16),
+                  ),
+                ),
+              ),
+              shape: const RoundedRectangleBorder(
+                borderRadius: BorderRadius.vertical(
+                  bottom: Radius.circular(16),
+                ),
+              ),
+              actions: [
+                Container(
+                  margin: const EdgeInsets.only(right: 8),
+                  child: IconButton(
+                    onPressed: _saveSession,
+                    icon: const Icon(Icons.save_alt),
+                    tooltip: 'Save Session',
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.white.withOpacity(0.2),
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ),
+                Container(
+                  margin: const EdgeInsets.only(right: 16),
+                  child: IconButton(
+                    onPressed: _showHistory,
+                    icon: const Icon(Icons.history),
+                    tooltip: 'View History',
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.white.withOpacity(0.2),
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
             ),
       body: showSpeedSelector ? _buildSpeedSelector() : _buildMovingWordView(),
     );
